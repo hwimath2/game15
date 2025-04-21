@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>우주 비행기 게임 (볼륨 조절 기능 추가)</title> {/* 제목 변경 */}
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ... CSS 스타일은 이전과 동일 ... */
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .game-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #gameCanvas {
+      max-width: 100%;
+      max-height: 100%;
+      aspect-ratio: 9/16;
+      box-shadow: 0 0 20px rgba(0, 100, 255, 0.5);
+      opacity: 0;
+      transition: opacity 2s ease;
+    }
+    @media (orientation: portrait) {
+      #gameCanvas {
+        width: 100%;
+        height: auto;
+      }
+    }
+    @media (orientation: landscape) {
+      #gameCanvas {
+        height: 100vh;
+        width: auto;
+      }
+    }
+    .control-buttons {
+      position: fixed;
+      bottom: 5vh;
+      left: 0;
+      right: 0;
+      display: flex;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .control-button {
+      width: 15vw;
+      height: 15vw;
+      max-width: 80px;
+      max-height: 80px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.3);
+      border: 2px solid #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: #fff;
+      pointer-events: auto;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .control-button:hover {
+      background: rgba(255, 255, 255, 0.5);
+      transform: scale(1.1);
+    }
+    .control-button:active {
+      background: rgba(255, 255, 255, 0.7);
+      transform: scale(0.95);
+    }
+    .control-button::before {
+      content: attr(data-arrow);
+    }
+    #restartBtn {
+      display: none;
+      position: absolute;
+      left: 50%;
+      top: 60%;
+      transform: translate(-50%, -50%);
+      width: 120px;
+      height: 120px;
+      font-size: 32px;
+      background: rgba(255, 255, 255, 0.4);
+      border: 3px solid #fff;
+      color: #fff;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+      z-index: 100;
+    }
+    @keyframes pulse {
+      0% {
+        transform: translate(-50%, -50%) scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7);
+      }
+      70% {
+        transform: translate(-50%, -50%) scale(1.05);
+        box-shadow: 0 0 0 10px rgba(255, 255, 255, 0);
+      }
+      100% {
+        transform: translate(-50%, -50%) scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+      }
+    }
+    /* 인트로 */
+    #introContainer {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      z-index: 2000;
+      opacity: 1;
+      transition: opacity 2.5s ease;
+    }
+    #introVideo {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+  <div id="introContainer">
+    <video id="introVideo" playsinline muted>
+      <source src="intro.mp4" type="video/mp4" />
+      브라우저가 비디오를 지원하지 않습니다.
+    </video>
+  </div>
+  <div class="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div class="control-buttons">
+      <button id="restartBtn" class="control-button" data-arrow="↺"></button>
+    </div>
+  </div>
+
+  <script>
+    /* -------------------- 인트로 처리 -------------------- */
+    const introContainer = document.getElementById("introContainer");
+    const introVideo = document.getElementById("introVideo");
+    const canvas = document.getElementById("gameCanvas");
+    let introPlayed = false;
+    let transitionStarted = false;
+
+    function playIntro() {
+      // 인트로 비디오 재생 시도, 실패 시 클릭 유도 프롬프트 표시
+      introVideo.play().catch(showPlayPrompt);
+      introVideo.addEventListener("timeupdate", () => {
+        if (!introVideo.duration) return;
+        const d = introVideo.duration, t = introVideo.currentTime;
+        // 영상 중간 지점 또는 끝나기 0.5초 전에 페이드 전환 시작
+        if ((t >= d * 0.5 || t >= d - 0.5) && !transitionStarted) {
+          transitionStarted = true;
+          startFadeTransition();
+        }
+      });
+    }
+    function showPlayPrompt() {
+      // 자동 재생 실패 시 사용자 클릭 유도 메시지 표시
+      const p = document.createElement("div");
+      Object.assign(p.style, { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", color: "#fff", fontSize: "24px", background: "rgba(0,0,0,.5)", padding: "20px", borderRadius: "10px", cursor: "pointer", textAlign: "center" });
+      p.textContent = "화면을 클릭하여 시작하세요";
+      introContainer.appendChild(p);
+      // 클릭 시 비디오 재생 및 오디오 컨텍스트 초기화 시도
+      introContainer.addEventListener("click", () => {
+          introVideo.play().catch(e => console.error("Intro video play error:", e));
+          p.remove();
+          initAudioContext(); // 사용자 상호작용 후 오디오 컨텍스트 초기화
+        }, { once: true });
+    }
+    function startFadeTransition() {
+      // 인트로 페이드 아웃 및 게임 에셋 로딩 시작
+      if (introPlayed) return;
+      introPlayed = true;
+      introContainer.style.opacity = "0";
+      initAudioContext(); // 오디오 컨텍스트 초기화 (이미 되어있을 수 있음)
+      // introContainer 제거는 에셋 로딩 완료 후 initGame에서 처리
+    }
+    // 인트로 영상 종료 시 자동 전환
+    introVideo.addEventListener("ended", () => { if (!transitionStarted) startFadeTransition(); });
+
+    /* -------------------- 이미지/오디오 로드 -------------------- */
+    const ASSETS = { bg: "background.png", p: "player.png", e1: "enemy1.png", e2: "enemy2.png", h1: "health_item1.png", h2: "health_item2.png", };
+    const AUDIO_ASSETS = { bgm: "background.mp3", hit: "hit.wav", explosion: "explosion.wav", item: "item.wav", };
+
+    // <<< 새로운 코드: 오디오 볼륨 설정 (0.0 ~ 1.0) >>>
+    const AUDIO_VOLUMES = {
+      bgm: 0.3,       // 배경음악 볼륨
+      hit: 0.5,       // 피격 효과음 볼륨
+      explosion: 0.7, // 폭발 효과음 볼륨
+      item: 0.6       // 아이템 획득 효과음 볼륨
+    };
+    // <<< 추가 끝 >>>
+
+    const IMG = {};
+    let loadedImages = 0;
+    let audioContext;
+    const audioBuffers = {};
+    let bgmSource = null;
+    let loadedSounds = 0;
+    let totalAssets = Object.keys(ASSETS).length + Object.keys(AUDIO_ASSETS).length;
+    window.assetsLoadingStarted = false; // 에셋 로딩 중복 방지 플래그
+    window.gameInitialized = false; // 게임 초기화 중복 방지 플래그
+
+    function initAudioContext() {
+      let startLoading = false;
+      if (!audioContext) {
+        try {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          console.log("AudioContext initialized.");
+          startLoading = true; // 오디오 컨텍스트 생성 성공 시 로딩 시작 가능
+        } catch (e) {
+          console.error("Web Audio API is not supported in this browser", e);
+          // 오디오 API 미지원 시 사운드는 로드 안 함 (로드된 것으로 간주)
+          loadedSounds = Object.keys(AUDIO_ASSETS).length;
+          startLoading = true; // 오디오 없어도 이미지 로딩은 시작해야 함
+        }
+      } else {
+        startLoading = true; // 이미 오디오 컨텍스트가 있으면 로딩 시작 가능
+      }
+
+      // 오디오 컨텍스트 준비 완료 및 아직 에셋 로딩 시작 안했을 경우 로딩 시작
+      if (startLoading && !window.assetsLoadingStarted) {
+        window.assetsLoadingStarted = true;
+        console.log("Triggering asset loading...");
+        loadAssets();
+      }
+    }
+
+    function loadAssets() {
+      totalAssets = Object.keys(ASSETS).length + Object.keys(AUDIO_ASSETS).length;
+      console.log("Starting asset loading... Total assets:", totalAssets);
+      loadImages();
+      loadAudioAssets();
+    }
+
+    function checkAssetsLoaded() {
+        // 로딩 상태 로그 출력
+        console.log(`Assets Check: Images Loaded = ${loadedImages}/${Object.keys(ASSETS).length}, Sounds Loaded = ${loadedSounds}/${Object.keys(AUDIO_ASSETS).length}, Total Required = ${totalAssets}`);
+        // 모든 이미지와 사운드(오디오 미지원 포함) 로드가 완료되었고, 아직 게임이 초기화되지 않았다면 게임 시작
+        if (loadedImages + loadedSounds >= totalAssets) {
+            if (!window.gameInitialized) {
+                window.gameInitialized = true; // 게임 초기화 플래그 설정
+                window.assetsLoadingStarted = false; // 다음 게임 시작을 위해 로딩 플래그 리셋
+                console.log("All assets accounted for. Initializing game...");
+                introContainer.style.display = "none"; // 인트로 컨테이너 숨기기
+                initGame(); // 게임 초기화 및 시작
+            }
+        }
+    }
+
+    function loadImages() {
+      const imageKeys = Object.keys(ASSETS);
+      if (imageKeys.length === 0) { checkAssetsLoaded(); return; } // 로드할 이미지 없으면 바로 체크
+      let imagesToLoad = imageKeys.length;
+
+      for (const k in ASSETS) {
+        IMG[k] = new Image();
+        IMG[k].src = ASSETS[k];
+        IMG[k].onload = () => {
+          loadedImages++;
+          checkAssetsLoaded(); // 이미지 로드 완료 시마다 체크
+        };
+        IMG[k].onerror = () => {
+          console.error(`Failed to load image: ${ASSETS[k]}`);
+          loadedImages++; // 실패해도 카운트는 증가시켜 로딩 절차 완료
+          checkAssetsLoaded();
+        };
+      }
+    }
+
+    function loadAudioAssets() {
+      // 오디오 컨텍스트 없으면 오디오 로드 스킵
+      if (!audioContext) {
+        console.warn("AudioContext not available, skipping audio load.");
+        checkAssetsLoaded(); // 오디오 없이 진행하기 위해 체크 호출
+        return;
+      }
+
+      const soundKeys = Object.keys(AUDIO_ASSETS);
+      if (soundKeys.length === 0) { checkAssetsLoaded(); return; } // 로드할 사운드 없으면 바로 체크
+      let soundsToLoad = soundKeys.length;
+
+      for (const key in AUDIO_ASSETS) {
+        fetch(AUDIO_ASSETS[key])
+          .then(response => {
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status} for ${AUDIO_ASSETS[key]}`);
+            }
+            return response.arrayBuffer();
+          })
+          .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer))
+          .then(audioBuffer => {
+            audioBuffers[key] = audioBuffer; // 디코딩된 오디오 버퍼 저장
+            loadedSounds++;
+            if (key === 'bgm') {
+              console.log('>>> background.mp3 디코딩 성공! 버퍼:', audioBuffer);
+            }
+            console.log(`Audio loaded: ${AUDIO_ASSETS[key]}`);
+            checkAssetsLoaded(); // 사운드 로드 완료 시마다 체크
+          })
+          .catch(error => {
+            console.error(`Failed to load or decode audio: ${AUDIO_ASSETS[key]}`, error);
+            loadedSounds++; // 실패해도 카운트는 증가시켜 로딩 절차 완료
+            checkAssetsLoaded();
+          });
+      }
+    }
+
+    /* -------------------- 캔버스 & 상수 -------------------- */
+    const ctx = canvas.getContext("2d");
+    canvas.width = 800; canvas.height = 600; // 기본 렌더링 해상도
+    const PLAYER_SIZE = 80; const ENEMY_SIZE = 50; const ITEM_SIZE = 40;
+    const ITEM_INTERVAL = 10000; // 아이템 생성 간격 (ms)
+    const BASE_SHOT_INT = 500; // 기본 미사일 발사 간격 (ms)
+    const SPEED_FACTOR = 0.02; // 시간 경과에 따른 적 속도 증가 계수
+    const MOVE_SPEED = 8; // 플레이어 기본 이동 속도
+
+    /* -------------------- 상태 -------------------- */
+    let player, enemies, missiles, items, explosions, playerEnergy, score, gameOver;
+    let missileCount, missilePickups, shotInterval, lastItemTime, lastShotTime, startTime;
+    let canvasXRatio = 1, canvasYRatio = 1, moveSpeedX = MOVE_SPEED, moveSpeedY = MOVE_SPEED; // 캔버스 비율 및 조정된 이동 속도
+    let isTouching = false, lastTouchX = null, lastTouchY = null; // 터치 상태
+    let keys = {}; // 현재 눌린 키 상태
+
+    function updateCanvasRatio() {
+      // 캔버스의 실제 표시 크기와 렌더링 크기 비율 계산 (터치 좌표 변환용)
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return; // 크기가 0이면 계산 중단
+      canvasXRatio = canvas.width / rect.width;
+      canvasYRatio = canvas.height / rect.height;
+      // 가로/세로 비율에 따라 이동 속도 보정 (가로/세로 모드에서 동일한 체감 속도 유지)
+      if (canvasXRatio > canvasYRatio) { // 가로가 더 넓게 표시될 때 (세로 비율에 맞춤)
+        moveSpeedX = MOVE_SPEED * (canvasYRatio / canvasXRatio);
+        moveSpeedY = MOVE_SPEED;
+      } else { // 세로가 더 길게 표시될 때 (가로 비율에 맞춤)
+        moveSpeedX = MOVE_SPEED;
+        moveSpeedY = MOVE_SPEED * (canvasXRatio / canvasYRatio);
+      }
+    }
+    window.addEventListener("resize", updateCanvasRatio); // 창 크기 변경 시 비율 업데이트
+
+    /* -------------------- 입력 -------------------- */
+    window.addEventListener("keydown", (e) => (keys[e.key] = true)); // 키 누름 상태 저장
+    window.addEventListener("keyup", (e) => (keys[e.key] = false)); // 키 뗌 상태 저장
+    const restartBtn = document.getElementById("restartBtn");
+    restartBtn.addEventListener("click", () => {
+      restartBtn.style.display = "none"; // 버튼 숨김
+      initGame(); // 게임 재시작
+    });
+
+    function pointerStart(clientX, clientY) {
+      // 터치 또는 마우스 클릭 시작 시
+      if (!player || gameOver) return; // 플레이어 없거나 게임 오버 시 무시
+      isTouching = true;
+      const rect = canvas.getBoundingClientRect();
+      // 화면 좌표를 캔버스 내부 좌표로 변환
+      const canvasX = (clientX - rect.left) * canvasXRatio;
+      const canvasY = (clientY - rect.top) * canvasYRatio;
+      lastTouchX = canvasX;
+      lastTouchY = canvasY;
+      // 즉시 해당 위치로 플레이어 이동 (중앙 기준)
+      player.x = canvasX - player.w / 2;
+      player.y = canvasY - player.h / 2;
+      clampPlayer(); // 캔버스 밖으로 나가지 않도록 위치 보정
+    }
+    function pointerMove(clientX, clientY) {
+      // 터치 또는 마우스 드래그 시
+      if (!isTouching || !player || gameOver) return; // 터치 중이 아니거나 플레이어 없거나 게임 오버 시 무시
+      const rect = canvas.getBoundingClientRect();
+      const canvasX = (clientX - rect.left) * canvasXRatio;
+      const canvasY = (clientY - rect.top) * canvasYRatio;
+      // 이전 위치와의 차이만큼 플레이어 이동
+      const dx = canvasX - lastTouchX;
+      const dy = canvasY - lastTouchY;
+      player.x += dx;
+      player.y += dy;
+      clampPlayer(); // 위치 보정
+      // 현재 위치를 다음 이동 계산을 위해 저장
+      lastTouchX = canvasX;
+      lastTouchY = canvasY;
+    }
+    function pointerEnd() {
+      // 터치 또는 마우스 클릭 종료 시
+      isTouching = false;
+      lastTouchX = null;
+      lastTouchY = null;
+    }
+    function clampPlayer() {
+      // 플레이어가 캔버스 영역을 벗어나지 않도록 제한
+      if (!player) return;
+      player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
+      player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
+    }
+
+    // 터치 이벤트 리스너 (passive: false 로 스크롤 등 기본 동작 방지)
+    canvas.addEventListener("touchstart", (e) => { e.preventDefault(); if (e.touches.length > 0) pointerStart(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+    canvas.addEventListener("touchmove", (e) => { e.preventDefault(); if (e.touches.length > 0) pointerMove(e.touches[0].clientX, e.touches[0].clientY); }, { passive: false });
+    canvas.addEventListener("touchend", (e) => { e.preventDefault(); pointerEnd(); });
+    canvas.addEventListener("touchcancel", (e) => { e.preventDefault(); pointerEnd(); }); // 터치 취소 시에도 종료 처리
+
+    // 마우스 이벤트 리스너
+    canvas.addEventListener("mousedown", (e) => pointerStart(e.clientX, e.clientY));
+    canvas.addEventListener("mousemove", (e) => { if (isTouching) pointerMove(e.clientX, e.clientY); }); // mousedown 상태일 때만 move 처리
+    canvas.addEventListener("mouseup", pointerEnd);
+    canvas.addEventListener("mouseleave", pointerEnd); // 캔버스 영역 벗어나면 터치 종료 처리
+
+    // 스페이스바로 미사일 발사 (키보드 입력)
+    window.addEventListener("keydown", (e) => {
+      if (e.key === " " && !gameOver && player) {
+        shootMissile(); // 즉시 발사 (gameLoop의 자동 발사와 별개)
+      }
+    });
+
+    /* -------------------- 유틸 -------------------- */
+    // 둥근 사각형 그리기 함수
+    function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+      if (w < 2 * r) r = w / 2; if (h < 2 * r) r = h / 2;
+      ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+      if (fill) ctx.fill(); if (stroke) ctx.stroke();
+    }
+
+    // <<< 수정된 playSound 함수 (볼륨 조절 기능 추가) >>>
+    function playSound(key, loop = false) {
+      // 오디오 컨텍스트나 해당 키의 오디오 버퍼가 없으면 재생 불가
+      if (!audioContext || !audioBuffers[key]) {
+        // console.warn(`Cannot play sound: ${key}. AudioContext or buffer unavailable.`); // 너무 자주 나올 수 있어 주석 처리
+        return null;
+      }
+
+      try {
+        // 1. 오디오 소스 노드 생성
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffers[key];
+        source.loop = loop;
+
+        // 2. 게인(볼륨) 노드 생성
+        const gainNode = audioContext.createGain();
+
+        // 3. 설정된 볼륨 값 적용 (AUDIO_VOLUMES 객체에서 가져옴, 없으면 기본값 1.0)
+        const volume = AUDIO_VOLUMES[key] !== undefined ? AUDIO_VOLUMES[key] : 1.0;
+        gainNode.gain.value = volume;
+
+        // 4. 노드 연결: Source -> Gain -> Destination(스피커)
+        source.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        // 5. 사운드 재생 시작
+        source.start(0);
+
+        // BGM 등 반복 재생되는 사운드를 중지시키기 위해 소스 노드 반환
+        return source;
+
+      } catch (e) {
+        console.error(`Error playing sound ${key}:`, e);
+        return null;
+      }
+    }
+    // <<< 수정 끝 >>>
+
+
+    /* -------------------- 클래스 -------------------- */
+    class Player {
+      constructor() {
+        this.w = PLAYER_SIZE; this.h = PLAYER_SIZE;
+        this.x = canvas.width / 2 - this.w / 2; // 중앙 하단 시작
+        this.y = canvas.height - this.h - 10;
+      }
+      move() {
+        // 키보드 입력에 따른 이동 (보정된 속도 적용)
+        if (keys.ArrowLeft && this.x > 0) this.x -= moveSpeedX;
+        if (keys.ArrowRight && this.x < canvas.width - this.w) this.x += moveSpeedX;
+        if (keys.ArrowUp && this.y > 0) this.y -= moveSpeedY;
+        if (keys.ArrowDown && this.y < canvas.height - this.h) this.y += moveSpeedY;
+        // 터치/마우스 이동은 입력 핸들러에서 직접 처리하므로 여기서는 키보드만
+      }
+      draw() {
+        // 플레이어 이미지 또는 대체 사각형 그리기
+        if (IMG.p && IMG.p.complete) {
+          ctx.drawImage(IMG.p, this.x, this.y, this.w, this.h);
+        } else {
+          ctx.fillStyle = "blue";
+          ctx.fillRect(this.x, this.y, this.w, this.h);
+        }
+      }
+    }
+
+    class Missile {
+      constructor(x, y, ang = 0) { // 발사 각도(ang) 추가
+        this.w = 10; this.h = 28;
+        this.x = x - this.w / 2; // 발사 위치 (플레이어 중앙)
+        this.y = y;
+        this.sp = 10; // 미사일 속도
+        this.ang = (ang * Math.PI) / 180; // 각도를 라디안으로 변환
+      }
+      move() {
+        // 각도에 따라 이동
+        this.y -= Math.cos(this.ang) * this.sp;
+        this.x += Math.sin(this.ang) * this.sp;
+      }
+      draw() {
+        // 미사일 모양 그리기 (회전 및 스타일 적용)
+        ctx.save(); // 현재 상태 저장
+        ctx.translate(this.x + this.w / 2, this.y + this.h / 2); // 미사일 중심으로 이동
+        ctx.rotate(this.ang); // 각도만큼 회전
+        // ctx.shadowColor = "#ffae33"; ctx.shadowBlur = 12; // 그림자 효과 (성능 영향 고려)
+        // 그라데이션 색상 적용
+        const grad = ctx.createLinearGradient(0, -this.h / 2, 0, this.h / 2);
+        grad.addColorStop(0, "#fff"); grad.addColorStop(1, "#ff4500");
+        ctx.fillStyle = grad;
+        // 미사일 형태 그리기 (삼각형)
+        ctx.beginPath();
+        ctx.moveTo(0, -this.h / 2); // 위쪽 꼭지점
+        ctx.lineTo(this.w / 2, this.h / 2); // 오른쪽 아래
+        ctx.lineTo(-this.w / 2, this.h / 2); // 왼쪽 아래
+        ctx.closePath();
+        ctx.fill();
+        // ctx.shadowBlur = 0; // 그림자 초기화
+        ctx.restore(); // 이전 상태 복원
+      }
+    }
+
+    class Enemy {
+      constructor(type) { // 적 타입 (1 또는 2)
+        this.w = ENEMY_SIZE; this.h = ENEMY_SIZE;
+        this.x = Math.random() * (canvas.width - this.w); // 랜덤 x 위치에서 생성
+        this.y = -this.h; // 화면 위쪽 밖에서 시작
+        this.type = type;
+        this.health = type; // 타입에 따라 체력 설정 (type 1 = 1, type 2 = 2)
+        this.baseSp = 1 + Math.random() * 2; // 기본 속도 랜덤 설정
+      }
+      move(now) {
+        // 아래로 이동 (시간이 지남에 따라 점점 빨라짐)
+        const elapsed = (now - startTime) / 1000; // 게임 시작 후 경과 시간 (초)
+        this.y += this.baseSp + elapsed * SPEED_FACTOR;
+      }
+      draw() {
+        // 타입에 맞는 적 이미지 또는 대체 사각형 그리기
+        const img = this.type === 1 ? IMG.e1 : IMG.e2;
+        if (img && img.complete) {
+          ctx.drawImage(img, this.x, this.y, this.w, this.h);
+        } else {
+          ctx.fillStyle = this.type === 1 ? "purple" : "darkred";
+          ctx.fillRect(this.x, this.y, this.w, this.h);
+        }
+      }
+    }
+
+    class Explosion {
+      constructor(x, y) { // 폭발 위치
+        this.x = x; this.y = y;
+        this.r = 12; // 초기 반경
+        this.alpha = 1; // 초기 투명도 (불투명)
+        this.duration = 0.5; // 애니메이션 지속 시간 (초)
+        this.startTime = performance.now(); // 생성 시각
+      }
+      update(now) {
+        // 시간에 따라 반경 커지고 투명도 감소
+        const elapsed = (now - this.startTime) / 1000;
+        const progress = Math.min(1, elapsed / this.duration); // 진행률 (0 ~ 1)
+        this.r = 12 + progress * 40; // 반경 증가
+        this.alpha = 1 - progress; // 투명도 감소
+      }
+      draw() {
+        if (this.alpha <= 0) return; // 완전히 투명해지면 그리지 않음
+        ctx.save();
+        ctx.globalAlpha = this.alpha; // 투명도 적용
+        // 방사형 그라데이션으로 폭발 효과 표현
+        const g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.r);
+        g.addColorStop(0, "rgba(255, 255, 180, 1)"); // 중심 (밝은 노랑)
+        g.addColorStop(0.3, "rgba(255, 170, 51, 0.8)"); // 중간 (주황)
+        g.addColorStop(0.6, "rgba(255, 85, 34, 0.5)"); // 바깥 (빨강)
+        g.addColorStop(1, "rgba(255, 0, 0, 0)"); // 완전 바깥 (투명)
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); // 원 그리기
+        ctx.fill();
+        ctx.restore();
+      }
+      get done() {
+        // 애니메이션 종료 여부 반환
+        return this.alpha <= 0;
+      }
+    }
+
+    class Item {
+      constructor() {
+        this.w = ITEM_SIZE; this.h = ITEM_SIZE;
+        this.x = Math.random() * (canvas.width - this.w); // 랜덤 x 위치
+        this.y = -this.h; // 화면 위쪽 밖에서 시작
+        this.sp = 3; // 아이템 속도
+        this.type = Math.random() < 0.5 ? "health" : "missile"; // 50% 확률로 타입 결정
+      }
+      move() {
+        // 아래로 이동
+        this.y += this.sp;
+      }
+      draw() {
+        // 타입에 맞는 아이템 이미지 또는 대체 사각형 그리기
+        const img = this.type === "health" ? IMG.h1 : IMG.h2;
+        if (img && img.complete) {
+          ctx.drawImage(img, this.x, this.y, this.w, this.h);
+        } else {
+          ctx.fillStyle = this.type === "health" ? "lime" : "orange";
+          ctx.fillRect(this.x, this.y, this.w, this.h);
+        }
+      }
+    }
+
+    /* -------------------- 충돌 & 발사 -------------------- */
+    // 사각형 충돌 감지 (AABB)
+    function isCollision(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    // 미사일 발사 함수
+    function shootMissile() {
+      if (!player || gameOver) return; // 플레이어 없거나 게임 오버 시 발사 안 함
+      const sx = player.x + player.w / 2; // 발사 X 좌표 (플레이어 중앙)
+      const sy = player.y; // 발사 Y 좌표 (플레이어 상단)
+
+      // 현재 미사일 개수(missileCount)에 따라 발사
+      if (missileCount === 1) {
+        // 1개 발사
+        missiles.push(new Missile(sx, sy));
+      } else {
+        // 여러 개 발사 (부채꼴 모양)
+        const spreadAngle = 15; // 미사일 간 각도 (도)
+        for (let i = 0; i < missileCount; i++) {
+          // 중앙 미사일을 기준으로 좌우로 각도 분산
+          const angle = (i - (missileCount - 1) / 2) * spreadAngle;
+          missiles.push(new Missile(sx, sy, angle));
+        }
+      }
+      // 발사 시각 갱신 (자동 발사 간격 조절용, gameLoop에서 처리)
+      // lastShotTime = performance.now(); // <- 여기서 하면 안됨, gameLoop에서 처리해야 함
+    }
+
+
+    /* -------------------- 게임 초기화 -------------------- */
+    function initGame() {
+      console.log("Initializing game variables...");
+      // 게임 상태 변수 초기화
+      player = new Player();
+      enemies = []; missiles = []; items = []; explosions = [];
+      playerEnergy = 100; score = 0; gameOver = false;
+      missileCount = 1; // 초기 미사일 개수
+      missilePickups = 0; // 획득한 미사일 아이템 수
+      shotInterval = BASE_SHOT_INT; // 초기 발사 간격
+      startTime = performance.now(); // 게임 시작 시각 기록
+      lastItemTime = startTime; // 마지막 아이템 생성 시각 초기화
+      lastShotTime = startTime; // 마지막 발사 시각 초기화
+      keys = {}; // 키 상태 초기화
+      isTouching = false; lastTouchX = null; lastTouchY = null; // 터치 상태 초기화
+
+      updateCanvasRatio(); // 캔버스 비율 계산
+      canvas.style.opacity = "1"; // 캔버스 보이게 설정
+      restartBtn.style.display = "none"; // 재시작 버튼 숨김
+      window.gameInitialized = true; // 초기화 완료 플래그
+
+      // 배경음악 재생
+      if (bgmSource) { // 기존 BGM 소스가 있으면 정지
+        try { bgmSource.stop(); } catch (e) {}
+      }
+      console.log("Attempting to play BGM. Buffer exists:", !!audioBuffers['bgm']);
+      bgmSource = playSound('bgm', true); // 새 BGM 재생 (반복)
+      if (!bgmSource) {
+        console.warn("BGM could not be played.");
+      }
+
+      // 게임 루프 시작
+      requestAnimationFrame(gameLoop);
+    }
+
+    /* -------------------- UI & 배경 -------------------- */
+    function drawBackground() {
+      // 배경 이미지 또는 검은색 배경 그리기
+      if (IMG.bg && IMG.bg.complete) {
+        ctx.drawImage(IMG.bg, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    function drawUI() {
+      // 에너지 바 그리기
+      const gx = 20, gy = 20, gw = 240, gh = 26, r = 13; // 위치, 크기, 둥근 정도
+      // 배경
+      ctx.fillStyle = "rgba(255,255,255,0.12)";
+      roundRect(ctx, gx, gy, gw, gh, r, true, false);
+      // 에너지 표시 (그라데이션)
+      const grad = ctx.createLinearGradient(gx, 0, gx + gw, 0);
+      grad.addColorStop(0, "#00ffcc"); grad.addColorStop(1, "#0066ff");
+      ctx.fillStyle = grad;
+      roundRect(ctx, gx, gy, Math.max(0, (gw * playerEnergy) / 100), gh, r, true, false); // 에너지 비율만큼 채우기
+      // 테두리
+      ctx.lineWidth = 2; ctx.strokeStyle = "#fff";
+      roundRect(ctx, gx, gy, gw, gh, r, false, true);
+      // 에너지 텍스트 (%)
+      ctx.font = "16px 'Orbitron', sans-serif"; ctx.fillStyle = "#fff";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(Math.max(0, Math.floor(playerEnergy)) + "%", gx + gw / 2, gy + gh / 2 + 1);
+
+      // 점수 표시
+      ctx.font = "28px 'Orbitron', sans-serif"; ctx.textAlign = "right";
+      // ctx.shadowColor = "#00baff"; ctx.shadowBlur = 4; // 그림자 효과
+      ctx.fillStyle = "#fff";
+      ctx.fillText("SCORE " + score.toString().padStart(5, "0"), canvas.width - 30, 40);
+      // ctx.shadowBlur = 0; // 그림자 초기화
+    }
+
+    /* -------------------- 메인 루프 -------------------- */
+    function gameLoop(now) {
+      if (gameOver) return; // 게임 오버 시 루프 중단
+
+      // 1. 배경 그리기
+      drawBackground();
+
+      // 2. 자동 미사일 발사 (일정 간격마다)
+      if (player && now - lastShotTime >= shotInterval) {
+        shootMissile();
+        lastShotTime = now; // 마지막 발사 시간 갱신
+      }
+
+      // 3. 플레이어 처리
+      if (player) {
+        player.move(); // 키보드 입력에 따른 이동 처리
+        clampPlayer(); // 캔버스 경계 처리 (터치/마우스 이동 후에도 확인)
+        player.draw(); // 플레이어 그리기
+      }
+
+      // 4. 적 생성 (시간에 따라 확률 증가)
+      const spawnRate = 0.02 + Math.min(0.03, (now - startTime) / 1000 * 0.0005); // 최대 0.05 확률
+      if (Math.random() < spawnRate) {
+        enemies.push(new Enemy(Math.random() < 0.6 ? 1 : 2)); // 60% 확률로 type 1 생성
+      }
+
+      // 5. 아이템 생성 (일정 간격마다)
+      if (now - lastItemTime >= ITEM_INTERVAL) {
+        items.push(new Item());
+        lastItemTime = now; // 마지막 아이템 생성 시간 갱신
+      }
+
+      // 6. 적 처리 (이동, 그리기, 충돌 감지) - 배열 뒤에서부터 순회 (삭제 시 인덱스 문제 방지)
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        if (!enemies[i]) continue; // 혹시 모를 빈 요소 스킵
+        const e = enemies[i];
+        e.move(now);
+        e.draw();
+
+        // 화면 밖으로 나간 적 제거
+        if (e.y > canvas.height) {
+          enemies.splice(i, 1);
+          continue;
+        }
+
+        // 플레이어와 적 충돌 감지
+        if (player && isCollision(player, e)) {
+          playerEnergy -= 20; // 에너지 감소
+          explosions.push(new Explosion(e.x + e.w / 2, e.y + e.h / 2)); // 폭발 생성
+          playSound('explosion'); // 폭발음 재생
+          enemies.splice(i, 1); // 적 제거
+          if (playerEnergy <= 0) {
+            gameOver = true; // 게임 오버 처리
+            // gameOver 플래그만 설정하고 루프는 마저 돌림 (아래에서 최종 처리)
+          }
+          continue; // 플레이어와 충돌했으면 미사일 충돌은 검사 안 함
+        }
+
+        // 미사일과 적 충돌 감지
+        for (let j = missiles.length - 1; j >= 0; j--) {
+          if (!missiles[j]) continue; // 빈 미사일 스킵
+          if (isCollision(missiles[j], e)) {
+            playSound('hit'); // 피격음 재생
+            missiles.splice(j, 1); // 미사일 제거
+            e.health--; // 적 체력 감소
+            if (e.health <= 0) {
+              score++; // 점수 증가
+              explosions.push(new Explosion(e.x + e.w / 2, e.y + e.h / 2)); // 폭발 생성
+              playSound('explosion'); // 폭발음 재생
+              enemies.splice(i, 1); // 적 제거
+              break; // 해당 적은 제거되었으므로 더 이상 미사일 충돌 검사 필요 없음 (다음 적으로 넘어감)
+            }
+          }
+        }
+      } // 적 루프 끝
+
+      // 7. 아이템 처리 (이동, 그리기, 충돌 감지)
+      for (let i = items.length - 1; i >= 0; i--) {
+        if (!items[i]) continue;
+        const it = items[i];
+        it.move();
+        it.draw();
+
+        // 화면 밖으로 나간 아이템 제거
+        if (it.y > canvas.height) {
+          items.splice(i, 1);
+          continue;
+        }
+
+        // 플레이어와 아이템 충돌 감지
+        if (player && isCollision(player, it)) {
+          playSound('item'); // 아이템 획득음 재생
+          if (it.type === "health") {
+            playerEnergy = Math.min(100, playerEnergy + 30); // 체력 회복 (최대 100)
+          } else { // 미사일 아이템
+            missilePickups = Math.min(3, missilePickups + 1); // 최대 3번까지만 강화
+            if (missilePickups === 1) shotInterval = BASE_SHOT_INT / 1.5; // 발사 속도 증가
+            else if (missilePickups === 2) missileCount = 2; // 2발 발사
+            else if (missilePickups === 3) missileCount = 3; // 3발 발사
+          }
+          items.splice(i, 1); // 아이템 제거
+        }
+      } // 아이템 루프 끝
+
+      // 8. 미사일 처리 (이동, 그리기, 화면 밖 제거)
+      for (let i = missiles.length - 1; i >= 0; i--) {
+        if (!missiles[i]) continue;
+        const m = missiles[i];
+        m.move();
+        m.draw();
+        // 화면 밖으로 나간 미사일 제거
+        if (m.y < -m.h || m.x < -m.w || m.x > canvas.width) {
+          missiles.splice(i, 1);
+        }
+      } // 미사일 루프 끝
+
+      // 9. 폭발 효과 처리 (애니메이션 업데이트, 그리기, 완료 시 제거)
+      for (let i = explosions.length - 1; i >= 0; i--) {
+        if (!explosions[i]) continue;
+        const ex = explosions[i];
+        ex.update(now);
+        ex.draw();
+        if (ex.done) {
+          explosions.splice(i, 1); // 애니메이션 끝나면 제거
+        }
+      } // 폭발 루프 끝
+
+      // 10. UI 그리기 (에너지 바, 점수 등)
+      drawUI();
+
+      // 11. 게임 오버 최종 처리
+      if (gameOver) {
+        if (bgmSource) { // BGM 정지
+          try { bgmSource.stop(); bgmSource = null; } catch (e) {}
+        }
+        // 게임 오버 화면 표시
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)"; // 반투명 검은색 오버레이
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "40px 'Orbitron', sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 40);
+        ctx.font = "28px 'Orbitron', sans-serif";
+        ctx.fillText("SCORE: " + score.toString().padStart(5, "0"), canvas.width / 2, canvas.height / 2);
+        restartBtn.style.display = "flex"; // 재시작 버튼 표시
+        console.log("Game Over! Final Score:", score);
+        window.gameInitialized = false; // 다음 게임 시작을 위해 초기화 플래그 리셋
+        return; // 게임 루프 종료
+      }
+
+      // 12. 다음 프레임 요청
+      requestAnimationFrame(gameLoop);
+    } // gameLoop 끝
+
+    /* -------------------- 시작 -------------------- */
+    // 페이지 로드 완료 시 인트로 시작
+    window.addEventListener("load", playIntro);
+
+  </script>
+</body>
+</html>
