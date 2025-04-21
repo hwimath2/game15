@@ -200,8 +200,8 @@
 
     // <<< 새로운 코드: 오디오 볼륨 설정 (0.0 ~ 1.0) >>>
     const AUDIO_VOLUMES = {
-      bgm: 0.3,       // 배경음악 볼륨
-      hit: 0.5,       // 피격 효과음 볼륨
+      bgm: 0.2,       // 배경음악 볼륨
+      hit: 0.4,       // 피격 효과음 볼륨
       explosion: 1, // 폭발 효과음 볼륨
       item: 0.6       // 아이템 획득 효과음 볼륨
     };
@@ -325,7 +325,7 @@
     /* -------------------- 캔버스 & 상수 -------------------- */
     const ctx = canvas.getContext("2d");
     canvas.width = 800; canvas.height = 600; // 기본 렌더링 해상도
-    const PLAYER_SIZE = 70; const ENEMY_SIZE = 45; const ITEM_SIZE = 30;
+    const PLAYER_SIZE = 70; const ENEMY_SIZE = 45; const ITEM_SIZE = 40;
     const ITEM_INTERVAL = 10000; // 아이템 생성 간격 (ms)
     const BASE_SHOT_INT = 500; // 기본 미사일 발사 간격 (ms)
     const SPEED_FACTOR = 0.02; // 시간 경과에 따른 적 속도 증가 계수
